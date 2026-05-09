@@ -160,7 +160,8 @@ struct TrainingView: View {
     
     // MARK: - 场景案例生成中
     private var scenarioGeneratingView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
+            // 加载标题（固定在顶部）
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.5)
@@ -175,26 +176,91 @@ struct TrainingView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.top, 40)
+            .padding(.bottom, 20)
             
-            if !viewModel.scenarioCaseText.isEmpty {
-                ScrollView {
-                    Text(viewModel.scenarioCaseText)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                        .lineSpacing(6)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(.systemBackground).opacity(0.85))
-                        )
+            // 流式文本区域 - 铺满剩余空间
+            ScrollView {
+                VStack(spacing: 0) {
+                    if !viewModel.scenarioCaseText.isEmpty {
+                        Text(viewModel.scenarioCaseText)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .lineSpacing(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(.systemBackground).opacity(0.85))
+                            )
+                            .padding(.horizontal, 16)
+                    } else {
+                        // 骨架屏占位
+                        skeletonPlaceholder
+                            .padding(.horizontal, 16)
+                    }
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal)
             }
-            
-            Spacer()
+            .frame(maxHeight: .infinity)
         }
         .background(warmBg.ignoresSafeArea())
+    }
+    
+    // MARK: - 骨架屏占位
+    private var skeletonPlaceholder: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // 模拟多行文字
+            skeletonLine(width: 0.9)
+            skeletonLine(width: 0.75)
+            skeletonLine(width: 0.85)
+            skeletonLine(width: 0.6)
+            skeletonLine(width: 0.8)
+            skeletonLine(width: 0.5)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground).opacity(0.85))
+        )
+        .onAppear {
+            withAnimation(skeletonAnimation) {
+                skeletonOffset = 1.2
+            }
+        }
+    }
+    
+    private func skeletonLine(width: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(deepIndigo.opacity(0.1))
+            .frame(height: 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0),
+                                    .white.opacity(0.5),
+                                    .white.opacity(0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geo.size.width * 0.4)
+                        .offset(x: skeletonOffset * geo.size.width)
+                }
+            )
+            .clipped()
+            .frame(width: UIScreen.main.bounds.width * width - 32)
+    }
+    
+    @State private var skeletonOffset: CGFloat = -0.6
+    
+    private var skeletonAnimation: Animation {
+        Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: false)
     }
     
     // MARK: - 对话会话
