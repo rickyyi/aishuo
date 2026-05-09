@@ -9,9 +9,9 @@ import SwiftUI
 
 // MARK: - Agent类型
 enum AgentType: String, CaseIterable, Identifiable {
-    case speechCoach = "演讲教练"
-    case debateJudge = "辩论裁判"
-    case pronunciationTutor = "场景教练"
+    case speechCoach = "即兴表达"
+    case debateJudge = "逻辑思辨"
+    case pronunciationTutor = "实战对话"
     
     var id: String { rawValue }
     
@@ -45,9 +45,9 @@ enum AgentType: String, CaseIterable, Identifiable {
 
 // MARK: - 训练类型
 enum TrainingType: String, CaseIterable, Identifiable, Codable {
-    case impromptuSpeech = "即兴演讲"
-    case structuredDebate = "结构化辩论"
     case sceneDialogue = "场景对话"
+    case structuredDebate = "结构化辩论"
+    case impromptuSpeech = "即兴演讲"
     
     var id: String { rawValue }
     

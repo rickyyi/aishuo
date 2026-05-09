@@ -69,6 +69,8 @@ struct ContentView: View {
 // MARK: - 首页
 struct HomeView: View {
     @EnvironmentObject var viewModel: AppViewModel
+    @State private var showComingSoon = false
+    @State private var comingSoonType = ""
     
     var body: some View {
         NavigationView {
@@ -295,8 +297,24 @@ struct HomeView: View {
             sectionHeader("快速训练")
             
             ForEach(TrainingType.allCases) { type in
-                TrainingTypeCard(type: type)
+                if type == .sceneDialogue {
+                    NavigationLink(destination: TrainingView().environmentObject(viewModel)) {
+                        TrainingTypeCard(type: type)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    TrainingTypeCard(type: type)
+                        .onTapGesture {
+                            comingSoonType = type.rawValue
+                            showComingSoon = true
+                        }
+                }
             }
+        }
+        .alert("功能开发中", isPresented: $showComingSoon) {
+            Button("知道了", role: .cancel) {}
+        } message: {
+            Text("「\(comingSoonType)」功能正在开发中，敬请期待！")
         }
     }
     

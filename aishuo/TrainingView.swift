@@ -43,7 +43,7 @@ struct TrainingView: View {
                 }
             }
             .navigationTitle("场景对话")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(viewModel.dialogueSession != nil ? .inline : .large)
         }
     }
     
