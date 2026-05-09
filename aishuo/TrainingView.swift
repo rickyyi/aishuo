@@ -73,6 +73,9 @@ struct TrainingView: View {
                 }
                 .padding(.top, 8)
                 
+                // 自定义场景（固定在顶部）
+                customSceneSection
+                
                 // 按难度分组的场景
                 ForEach(groupedScenes, id: \.0) { difficulty, scenes in
                     VStack(alignment: .leading, spacing: 12) {
@@ -118,6 +121,18 @@ struct TrainingView: View {
             .padding(.top, 8)
         }
         .background(warmBg.ignoresSafeArea())
+    }
+    
+    // MARK: - 自定义场景入口
+    private var customSceneSection: some View {
+        SceneCard(
+            scene: DialogueScene.presets[0],
+            isSelected: selectedScene?.id == DialogueScene.presets[0].id
+        ) {
+            withAnimation(.spring()) {
+                selectedScene = DialogueScene.presets[0]
+            }
+        }
     }
     
     /// 按难度分组

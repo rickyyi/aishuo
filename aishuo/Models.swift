@@ -72,6 +72,15 @@ struct DialogueScene: Identifiable {
     let minRounds: Int
     
     static let presets: [DialogueScene] = [
+        // 自定义场景
+        DialogueScene(
+            name: "自定义场景",
+            icon: "plus.circle.fill",
+            description: "告诉AI你想练习什么场景，它会为你量身定制",
+            difficulty: "自定义",
+            initialPrompt: "请告诉我你想练习什么场景或话题？比如：\n\n📌 跟老板提加薪\n📌 向喜欢的人表白\n📌 安慰伤心朋友\n📌 向客户道歉\n📌 面试后追问结果\n📌 其他任何你想练习的场景\n\n跟我说说吧，我来为你打造专属对话训练！",
+            minRounds: 3
+        ),
         DialogueScene(
             name: "面试挑战",
             icon: "person.fill.questionmark",

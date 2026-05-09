@@ -266,6 +266,41 @@ class ApiService {
         }
     }
     
+    /// SSE 流式自定义场景生成——根据用户话题生成场景案例
+    func customStartScenarioStream(
+        topic: String,
+        onToken: @escaping (String) -> Void
+    ) async throws -> String {
+        guard let url = URL(string: "\(baseURL)/api/scenario/custom-start") else {
+            throw ApiError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 60
+        
+        let body: [String: Any] = ["topic": topic]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let reader = SSEStreamReader(onToken: onToken)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            reader.onFinish = { accumulatedText in
+                continuation.resume(returning: accumulatedText)
+            }
+            reader.onError = { error in
+                continuation.resume(throwing: ApiError.networkError(error))
+            }
+            
+            let session = URLSession(configuration: .default, delegate: reader, delegateQueue: nil)
+            let task = session.dataTask(with: request)
+            task.resume()
+            _ = session
+        }
+    }
+    
     /// SSE 流式对话续接——以角色身份生成下一句回复
     func chatScenarioStream(
         sceneName: String,

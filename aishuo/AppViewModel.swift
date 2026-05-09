@@ -42,6 +42,9 @@ class AppViewModel: ObservableObject {
     @Published var aiStreamingText: String = ""
     @Published var isEvaluatingDialogue: Bool = false
     @Published var scenarioGenerateError: String?
+    @Published var isCustomScene: Bool = false
+    @Published var isCustomScenarioReady: Bool = false
+    @Published var customScenarioText: String = ""
     
     // MARK: - 语音识别
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
@@ -104,6 +107,19 @@ class AppViewModel: ObservableObject {
     
     // MARK: - 场景对话管理
     func startSceneDialogue(scene: DialogueScene) {
+        // 自定义场景：跳过 LLM 生成，直接进入对话
+        if scene.name == "自定义场景" {
+            isCustomScene = true
+            isCustomScenarioReady = false
+            customScenarioText = ""
+            errorMessage = nil
+            isEvaluatingDialogue = false
+            dialogueSession = DialogueSession(scene: scene)
+            return
+        }
+        
+        isCustomScene = false
+        isCustomScenarioReady = false
         isGeneratingScenario = true
         scenarioCaseText = ""
         scenarioGenerateError = nil
@@ -149,6 +165,47 @@ class AppViewModel: ObservableObject {
         session.messages.append(userMsg)
         dialogueSession = session
         
+        // 自定义场景：第一轮用户回复 → 生成场景案例（以聊天泡泡形式）
+        if isCustomScene && !isCustomScenarioReady {
+            isAIThinking = true
+            aiStreamingText = ""
+            let topic = trimmedText
+            
+            Task {
+                do {
+                    let scenarioText = try await ApiService.shared.customStartScenarioStream(topic: topic) { token in
+                        Task { @MainActor in
+                            self.aiStreamingText += token
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        self.customScenarioText = scenarioText
+                        self.isCustomScenarioReady = true
+                        let aiMsg = DialogueMessage(role: .ai, content: scenarioText, isPressure: false, timestamp: Date())
+                        var updatedSession = self.dialogueSession
+                        updatedSession?.messages.append(aiMsg)
+                        self.dialogueSession = updatedSession
+                        self.isAIThinking = false
+                        self.aiStreamingText = ""
+                    }
+                } catch {
+                    let fallback = "好的，我们来模拟一个关于「\(topic)」的场景。作为AI，我会扮演相关角色。现在请开始你的回应吧！"
+                    await MainActor.run {
+                        self.customScenarioText = fallback
+                        self.isCustomScenarioReady = true
+                        let aiMsg = DialogueMessage(role: .ai, content: fallback, isPressure: false, timestamp: Date())
+                        var updatedSession = self.dialogueSession
+                        updatedSession?.messages.append(aiMsg)
+                        self.dialogueSession = updatedSession
+                        self.isAIThinking = false
+                        self.aiStreamingText = ""
+                    }
+                }
+            }
+            return
+        }
+        
         // AI思考中，准备流式
         isAIThinking = true
         aiStreamingText = ""
@@ -161,9 +218,10 @@ class AppViewModel: ObservableObject {
         
         Task {
             do {
+                let description = self.isCustomScene ? self.customScenarioText : scene.description
                 let fullResponse = try await ApiService.shared.chatScenarioStream(
                     sceneName: scene.name,
-                    sceneDescription: scene.description,
+                    sceneDescription: description,
                     difficulty: scene.difficulty,
                     messages: allMessages
                 ) { token in
@@ -312,6 +370,9 @@ class AppViewModel: ObservableObject {
         isEvaluatingDialogue = false
         errorMessage = nil
         scenarioGenerateError = nil
+        isCustomScene = false
+        isCustomScenarioReady = false
+        customScenarioText = ""
     }
     
     // MARK: - 统计信息
