@@ -197,6 +197,8 @@ struct DialogueSession: Identifiable {
     var isCompleted: Bool
     var score: Double?
     var feedback: String?
+    var suggestions: [String]?
+    var evaluation: ScenarioEvaluationResponse?
     
     var currentRound: Int {
         messages.filter { $0.role == .user }.count
@@ -211,6 +213,15 @@ struct DialogueSession: Identifiable {
         self.startTime = Date()
         self.messages = [
             DialogueMessage(role: .ai, content: scene.initialPrompt, isPressure: false, timestamp: Date())
+        ]
+        self.isCompleted = false
+    }
+    
+    init(scene: DialogueScene, initialMessage: String) {
+        self.scene = scene
+        self.startTime = Date()
+        self.messages = [
+            DialogueMessage(role: .ai, content: initialMessage, isPressure: false, timestamp: Date())
         ]
         self.isCompleted = false
     }
@@ -436,6 +447,16 @@ struct RetellEvaluationResponse: Codable {
     let fluency: Double
     let accuracy: Double
     let completeness: Double
+    let feedback: String
+    let suggestions: [String]
+}
+
+// MARK: - 场景对话评测响应
+struct ScenarioEvaluationResponse: Codable {
+    let responseAbility: Double
+    let logic: Double
+    let pressureResponse: Double
+    let overallScore: Double
     let feedback: String
     let suggestions: [String]
 }

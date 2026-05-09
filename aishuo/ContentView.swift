@@ -10,9 +10,9 @@ import SwiftUI
 // MARK: - 主题色扩展
 private extension Color {
     static let primaryBg = LinearGradient(colors: [
-        Color(red: 0.20, green: 0.06, blue: 0.03),
-        Color(red: 0.32, green: 0.10, blue: 0.05),
-        Color(red: 0.42, green: 0.16, blue: 0.08)
+        Color(red: 0.45, green: 0.18, blue: 0.10),
+        Color(red: 0.58, green: 0.28, blue: 0.15),
+        Color(red: 0.68, green: 0.36, blue: 0.20)
     ], startPoint: .topLeading, endPoint: .bottomTrailing)
     
     static let warmBg = LinearGradient(colors: [
@@ -260,9 +260,9 @@ struct HomeView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.35, green: 0.14, blue: 0.07),
-                                Color(red: 0.52, green: 0.22, blue: 0.12),
-                                Color(red: 0.30, green: 0.10, blue: 0.05)
+                                Color(red: 0.55, green: 0.25, blue: 0.12),
+                                Color(red: 0.70, green: 0.36, blue: 0.20),
+                                Color(red: 0.48, green: 0.20, blue: 0.10)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing

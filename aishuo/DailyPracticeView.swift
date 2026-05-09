@@ -184,9 +184,9 @@ struct DailyPracticeView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.35, green: 0.14, blue: 0.07),
-                                Color(red: 0.55, green: 0.22, blue: 0.12),
-                                Color(red: 0.30, green: 0.10, blue: 0.05)
+                                Color(red: 0.55, green: 0.25, blue: 0.12),
+                                Color(red: 0.70, green: 0.36, blue: 0.20),
+                                Color(red: 0.48, green: 0.20, blue: 0.10)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -389,19 +389,49 @@ struct DailyPracticeView: View {
             
             // 提交按钮
             if viewModel.isEvaluating {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .tint(vibrantPurple)
-                    Text("AI评测中...")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                if viewModel.streamingFeedback.isEmpty {
+                    // 初始加载中
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(vibrantPurple)
+                        Text("AI评测中...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.systemBackground).opacity(0.85))
+                    )
+                } else {
+                    // 流式反馈展示
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.caption)
+                                .foregroundColor(vibrantPurple)
+                            Text("AI实时评测")
+                                .font(.headline)
+                                .foregroundColor(deepIndigo)
+                        }
+                        
+                        Text(viewModel.streamingFeedback)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .lineSpacing(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(vibrantPurple.opacity(0.05))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(vibrantPurple.opacity(0.15), lineWidth: 0.5)
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemBackground).opacity(0.85))
-                )
             } else {
                 Button(action: {
                     withAnimation {

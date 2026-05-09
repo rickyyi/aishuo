@@ -30,7 +30,9 @@ struct TrainingView: View {
     var body: some View {
         NavigationView {
             Group {
-                if let session = viewModel.dialogueSession {
+                if viewModel.isGeneratingScenario {
+                    scenarioGeneratingView
+                } else if let session = viewModel.dialogueSession {
                     if session.isCompleted {
                         dialogueResultView(session: session)
                     } else {
@@ -156,11 +158,53 @@ struct TrainingView: View {
         }
     }
     
+    // MARK: - 场景案例生成中
+    private var scenarioGeneratingView: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(vibrantPurple)
+                
+                Text("AI 正在生成场景案例...")
+                    .font(.headline)
+                    .foregroundColor(deepIndigo)
+                
+                Text("请稍候，AI 正在根据所选场景为你构建真实情境")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 40)
+            
+            if !viewModel.scenarioCaseText.isEmpty {
+                ScrollView {
+                    Text(viewModel.scenarioCaseText)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .lineSpacing(6)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemBackground).opacity(0.85))
+                        )
+                }
+                .padding(.horizontal)
+            }
+            
+            Spacer()
+        }
+        .background(warmBg.ignoresSafeArea())
+    }
+    
     // MARK: - 对话会话
     private var dialogueSessionView: some View {
         VStack(spacing: 0) {
             // 顶部信息栏
             topBar
+            
+            // 错误提示
+            errorBanner
             
             // 消息列表
             ScrollViewReader { scrollView in
@@ -171,9 +215,19 @@ struct TrainingView: View {
                                 .id(message.id)
                         }
                         
-                        if viewModel.isAIThinking {
+                        if viewModel.isAIThinking && viewModel.aiStreamingText.isEmpty {
                             AIThinkingIndicator()
                                 .id("thinking")
+                        }
+                        
+                        if !viewModel.aiStreamingText.isEmpty {
+                            DialogueBubble(message: DialogueMessage(
+                                role: .ai,
+                                content: viewModel.aiStreamingText,
+                                isPressure: false,
+                                timestamp: Date()
+                            ))
+                            .id("streaming")
                         }
                     }
                     .padding()
@@ -190,6 +244,11 @@ struct TrainingView: View {
                         withAnimation {
                             scrollView.scrollTo("thinking", anchor: .bottom)
                         }
+                    }
+                }
+                .onChange(of: viewModel.aiStreamingText) { _ in
+                    withAnimation {
+                        scrollView.scrollTo("streaming", anchor: .bottom)
                     }
                 }
             }
@@ -255,22 +314,57 @@ struct TrainingView: View {
                 
                 // 结束按钮
                 Button(action: endDialogue) {
-                    Text("结束")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(session.canEnd ? vibrantPurple : Color.gray.opacity(0.4))
-                        )
+                    if viewModel.isEvaluatingDialogue {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                            .frame(width: 48, height: 28)
+                            .background(Capsule().fill(Color.gray.opacity(0.4)))
+                    } else {
+                        Text("结束")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(session.canEnd ? vibrantPurple : Color.gray.opacity(0.4))
+                            )
+                    }
                 }
-                .disabled(!session.canEnd)
+                .disabled(!session.canEnd || viewModel.isEvaluatingDialogue)
             }
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
         .background(Color(.systemBackground).opacity(0.9))
+    }
+    
+    // MARK: - 错误提示
+    private var errorBanner: some View {
+        if let error = viewModel.errorMessage {
+            return AnyView(
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(vibrantPurple)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(vibrantPurple)
+                    Spacer()
+                    Button(action: { viewModel.errorMessage = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(vibrantPurple.opacity(0.08))
+                .transition(.move(edge: .top).combined(with: .opacity))
+            )
+        }
+        return AnyView(EmptyView())
     }
     
     // MARK: - 输入栏（语音）
@@ -380,15 +474,21 @@ struct TrainingView: View {
                         .shadow(color: vibrantPurple.opacity(0.1), radius: 12, x: 0, y: 6)
                 )
                 
-                // 分数
+                // 综合评分
                 VStack(spacing: 12) {
                     Text("综合评分")
                         .font(.headline)
                         .foregroundColor(deepIndigo)
                     
-                    Text(String(format: "%.1f", session.score ?? 0))
-                        .font(.system(size: 56, weight: .bold))
-                        .foregroundColor(scoreColor(session.score ?? 0))
+                    if let eval = session.evaluation {
+                        Text(String(format: "%.1f", eval.overallScore))
+                            .font(.system(size: 56, weight: .bold))
+                            .foregroundColor(scoreColor(eval.overallScore))
+                    } else {
+                        Text(String(format: "%.1f", session.score ?? 0))
+                            .font(.system(size: 56, weight: .bold))
+                            .foregroundColor(scoreColor(session.score ?? 0))
+                    }
                     
                     HStack(spacing: 24) {
                         VStack(spacing: 4) {
@@ -424,9 +524,19 @@ struct TrainingView: View {
                         .shadow(color: cardShadow, radius: 8, x: 0, y: 4)
                 )
                 
+                // 各维度评分（来自 LLM 评测）
+                if let eval = session.evaluation {
+                    dimensionScoresView(eval: eval)
+                }
+                
                 // 反馈
                 if let feedback = session.feedback {
                     feedbackCard(feedback: feedback)
+                }
+                
+                // 提升建议（来自 LLM 评测）
+                if let eval = session.evaluation, !eval.suggestions.isEmpty {
+                    suggestionsCard(suggestions: eval.suggestions)
                 }
                 
                 // 对话记录预览
@@ -517,6 +627,93 @@ struct TrainingView: View {
         if score >= 85 { return .green }
         else if score >= 70 { return accentGold }
         else { return vibrantPurple }
+    }
+    
+    // MARK: - 各维度评分
+    private func dimensionScoresView(eval: ScenarioEvaluationResponse) -> some View {
+        VStack(spacing: 16) {
+            Text("各维度评分")
+                .font(.headline)
+                .foregroundColor(deepIndigo)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            scoreBar(label: "应答能力", score: eval.responseAbility, color: vibrantPurple)
+            scoreBar(label: "逻辑性", score: eval.logic, color: accentGold)
+            scoreBar(label: "压力应对", score: eval.pressureResponse, color: .green)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color(.systemBackground).opacity(0.85))
+                .shadow(color: cardShadow, radius: 8, x: 0, y: 4)
+        )
+    }
+    
+    private func scoreBar(label: String, score: Double, color: Color) -> some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(String(format: "%.1f", score))
+                    .font(.subheadline.bold())
+                    .foregroundColor(color)
+            }
+            
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(color.opacity(0.15))
+                        .frame(height: 8)
+                    
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(
+                            LinearGradient(colors: [color.opacity(0.6), color], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(score / 100))), height: 8)
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+    
+    // MARK: - 提升建议
+    private func suggestionsCard(suggestions: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "lightbulb.fill")
+                    .font(.caption)
+                    .foregroundColor(accentGold)
+                Text("提升建议")
+                    .font(.headline)
+                    .foregroundColor(deepIndigo)
+            }
+            
+            ForEach(Array(suggestions.enumerated()), id: \.0) { index, suggestion in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(.caption2.bold())
+                        .foregroundColor(.white)
+                        .frame(width: 18, height: 18)
+                        .background(vibrantPurple)
+                        .cornerRadius(9)
+                    
+                    Text(suggestion)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .lineSpacing(4)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color(.systemBackground).opacity(0.85))
+                .shadow(color: cardShadow, radius: 8, x: 0, y: 4)
+        )
     }
     
     // MARK: - 方法
@@ -673,7 +870,7 @@ struct DialogueBubble: View {
                     .padding(.vertical, 10)
                     .background(
                         message.role == .user ?
-                        LinearGradient(colors: [deepIndigo, Color(red: 0.35, green: 0.15, blue: 0.08)], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                        LinearGradient(colors: [deepIndigo, Color(red: 0.55, green: 0.25, blue: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing) :
                         LinearGradient(colors: [vibrantPurple.opacity(0.85), Color(red: 0.85, green: 0.35, blue: 0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
                     .cornerRadius(16)

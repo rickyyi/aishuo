@@ -32,10 +32,16 @@ class AppViewModel: ObservableObject {
     @Published var dailyPracticeDone: Bool = false
     @Published var transcribedText: String = ""
     @Published var isEvaluating: Bool = false
+    @Published var streamingFeedback: String = ""
     
     // MARK: - 场景对话状态
     @Published var dialogueSession: DialogueSession?
     @Published var isAIThinking: Bool = false
+    @Published var isGeneratingScenario: Bool = false
+    @Published var scenarioCaseText: String = ""
+    @Published var aiStreamingText: String = ""
+    @Published var isEvaluatingDialogue: Bool = false
+    @Published var scenarioGenerateError: String?
     
     // MARK: - 语音识别
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
@@ -98,98 +104,214 @@ class AppViewModel: ObservableObject {
     
     // MARK: - 场景对话管理
     func startSceneDialogue(scene: DialogueScene) {
-        dialogueSession = DialogueSession(scene: scene)
+        isGeneratingScenario = true
+        scenarioCaseText = ""
+        scenarioGenerateError = nil
+        errorMessage = nil
+        isEvaluatingDialogue = false
+        
+        Task {
+            do {
+                let generatedCase = try await ApiService.shared.startScenarioStream(
+                    sceneName: scene.name,
+                    sceneDescription: scene.description,
+                    difficulty: scene.difficulty
+                ) { token in
+                    Task { @MainActor in
+                        self.scenarioCaseText += token
+                    }
+                }
+                
+                await MainActor.run {
+                    dialogueSession = DialogueSession(scene: scene, initialMessage: generatedCase)
+                    isGeneratingScenario = false
+                    scenarioCaseText = ""
+                }
+            } catch {
+                await MainActor.run {
+                    // LLM 生成失败时使用本地预设 prompt
+                    dialogueSession = DialogueSession(scene: scene)
+                    isGeneratingScenario = false
+                    scenarioCaseText = ""
+                    scenarioGenerateError = nil
+                }
+            }
+        }
     }
     
     func sendDialogueResponse(text: String) {
         guard var session = dialogueSession, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         
+        let trimmedText = text.trimmingCharacters(in: .whitespaces)
+        
         // 追加用户消息
-        let userMsg = DialogueMessage(role: .user, content: text.trimmingCharacters(in: .whitespaces), isPressure: false, timestamp: Date())
+        let userMsg = DialogueMessage(role: .user, content: trimmedText, isPressure: false, timestamp: Date())
         session.messages.append(userMsg)
         dialogueSession = session
         
-        // AI思考中
+        // AI思考中，准备流式
         isAIThinking = true
-        
-        // 模拟AI延迟回复（带施压）
-        let round = session.currentRound
+        aiStreamingText = ""
         let scene = session.scene
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-            guard let self = self else { return }
-            
-            // 获取AI压力回复
-            let aiText = PressureTemplates.response(for: scene, round: round, userText: text)
-            let aiMsg = DialogueMessage(role: .ai, content: aiText, isPressure: true, timestamp: Date())
-            
-            // 随机3-5个字的打断前缀
-            let interruptPrefixes = ["打断一下，", "等等，", "我插一句，", "不好意思，", "且慢，"]
-            let finalText = Bool.random() ? "\(interruptPrefixes.randomElement() ?? "")\(aiText)" : aiText
-            
-            var updatedSession = self.dialogueSession
-            updatedSession?.messages.append(DialogueMessage(role: .ai, content: finalText, isPressure: true, timestamp: Date()))
-            self.dialogueSession = updatedSession
-            self.isAIThinking = false
+        // 构建消息历史
+        let allMessages: [(role: String, content: String)] = session.messages.map { msg in
+            (role: msg.role == .ai ? "AI" : "user", content: msg.content)
+        }
+        
+        Task {
+            do {
+                let fullResponse = try await ApiService.shared.chatScenarioStream(
+                    sceneName: scene.name,
+                    sceneDescription: scene.description,
+                    difficulty: scene.difficulty,
+                    messages: allMessages
+                ) { token in
+                    Task { @MainActor in
+                        self.aiStreamingText += token
+                    }
+                }
+                
+                await MainActor.run {
+                    let aiMsg = DialogueMessage(role: .ai, content: fullResponse, isPressure: true, timestamp: Date())
+                    var updatedSession = self.dialogueSession
+                    updatedSession?.messages.append(aiMsg)
+                    self.dialogueSession = updatedSession
+                    self.isAIThinking = false
+                    self.aiStreamingText = ""
+                }
+            } catch {
+                // LLM 调用失败时使用本地模板降级
+                await MainActor.run {
+                    let round = session.currentRound
+                    let aiText = PressureTemplates.response(for: scene, round: round, userText: trimmedText)
+                    let interruptPrefixes = ["打断一下，", "等等，", "我插一句，", "不好意思，", "且慢，"]
+                    let finalText = Bool.random() ? "\(interruptPrefixes.randomElement() ?? "")\(aiText)" : aiText
+                    let aiMsg = DialogueMessage(role: .ai, content: finalText, isPressure: true, timestamp: Date())
+                    var updatedSession = self.dialogueSession
+                    updatedSession?.messages.append(aiMsg)
+                    self.dialogueSession = updatedSession
+                    self.isAIThinking = false
+                    self.aiStreamingText = ""
+                }
+            }
         }
     }
     
     func endSceneDialogue() {
-        guard let session = dialogueSession, session.canEnd else { return }
+        guard let session = dialogueSession else { return }
+        
+        if !session.canEnd {
+            errorMessage = "至少需要 \(session.scene.minRounds) 轮对话才能结束"
+            return
+        }
+        
+        errorMessage = nil
         
         let duration = Date().timeIntervalSince(session.startTime)
         let totalRounds = session.currentRound
+        isEvaluatingDialogue = true
         
-        // 评分逻辑：基于轮次和消息长度综合
-        let roundScore = min(Double(totalRounds) / Double(session.scene.minRounds) * 60, 60)
-        let avgLength = session.messages
-            .filter { $0.role == .user }
-            .map { Double($0.content.count) }
-            .reduce(0, +) / max(Double(totalRounds), 1)
-        let qualityScore = min(avgLength / 30 * 40, 40)
-        let totalScore = roundScore + qualityScore
+        let messages: [(role: String, content: String)] = session.messages.map { msg in
+            (role: msg.role == .ai ? "AI" : "user", content: msg.content)
+        }
         
-        let feedbacks = [
-            "你在对话中展现了不错的应变能力，面对施压时保持了冷静。建议在关键论据上准备更充分的数据支撑。",
-            "表达流畅，逻辑清晰，面对质疑时能迅速组织语言。可以尝试更多角度思考问题。",
-            "应对压力时略显紧张，但整体回答结构完整。建议多做实战练习，增强临场反应。",
-            "你的反驳有力度，能够抓住对方逻辑漏洞。注意控制语气，保持专业和礼貌的平衡。",
-            "对话节奏把握不错，能主动引导话题。在细节层面还可以更深入一些。"
-        ]
-        let feedback = feedbacks.randomElement() ?? "表现良好，继续加油！"
-        
-        var updatedSession = dialogueSession
-        updatedSession?.isCompleted = true
-        updatedSession?.score = totalScore
-        updatedSession?.feedback = feedback
-        dialogueSession = updatedSession
-        
-        // 保存训练报告
-        let report = TrainingReport(
-            id: UUID(),
-            date: Date(),
-            trainingType: .sceneDialogue,
-            duration: duration,
-            score: totalScore,
-            feedback: feedback,
-            improvements: [
-                "注意在压力下保持逻辑连贯性",
-                "准备更多事实和数据进行支撑",
-                "练习主动引导对话方向",
-                "控制语气，保持专业态度"
-            ]
-        )
-        trainingReports.insert(report, at: 0)
-        
-        userProfile.completedSessions += 1
-        userProfile.totalTrainingTime += duration
-        let avgScore = trainingReports.reduce(0) { $0 + $1.score } / Double(trainingReports.count)
-        userProfile.skillLevel = min(10, max(1, Int(avgScore / 10)))
+        Task {
+            do {
+                let evaluation = try await ApiService.shared.evaluateScenario(
+                    sceneName: session.scene.name,
+                    sceneDescription: session.scene.description,
+                    roundCount: totalRounds,
+                    duration: duration,
+                    messages: messages
+                )
+                
+                await MainActor.run {
+                    var updatedSession = dialogueSession
+                    updatedSession?.isCompleted = true
+                    updatedSession?.score = evaluation.overallScore
+                    updatedSession?.feedback = evaluation.feedback
+                    updatedSession?.suggestions = evaluation.suggestions
+                    updatedSession?.evaluation = evaluation
+                    dialogueSession = updatedSession
+                    isEvaluatingDialogue = false
+                    
+                    // 保存训练报告
+                    let report = TrainingReport(
+                        id: UUID(),
+                        date: Date(),
+                        trainingType: .sceneDialogue,
+                        duration: duration,
+                        score: evaluation.overallScore,
+                        feedback: evaluation.feedback,
+                        improvements: evaluation.suggestions
+                    )
+                    trainingReports.insert(report, at: 0)
+                    
+                    userProfile.completedSessions += 1
+                    userProfile.totalTrainingTime += duration
+                    let avgScore = trainingReports.reduce(0) { $0 + $1.score } / Double(trainingReports.count)
+                    userProfile.skillLevel = min(10, max(1, Int(avgScore / 10)))
+                }
+            } catch {
+                // API 失败时使用本地降级评测
+                await MainActor.run {
+                    let roundScore = min(Double(totalRounds) / Double(session.scene.minRounds) * 60, 60)
+                    let avgLength = session.messages
+                        .filter { $0.role == .user }
+                        .map { Double($0.content.count) }
+                        .reduce(0, +) / max(Double(totalRounds), 1)
+                    let qualityScore = min(avgLength / 30 * 40, 40)
+                    let totalScore = roundScore + qualityScore
+                    
+                    let feedbacks = [
+                        "你在对话中展现了不错的应变能力，面对施压时保持了冷静。建议在关键论据上准备更充分的数据支撑。",
+                        "表达流畅，逻辑清晰，面对质疑时能迅速组织语言。可以尝试更多角度思考问题。",
+                        "应对压力时略显紧张，但整体回答结构完整。建议多做实战练习，增强临场反应。",
+                        "你的反驳有力度，能够抓住对方逻辑漏洞。注意控制语气，保持专业和礼貌的平衡。",
+                        "对话节奏把握不错，能主动引导话题。在细节层面还可以更深入一些。"
+                    ]
+                    let feedback = feedbacks.randomElement() ?? "表现良好，继续加油！"
+                    
+                    var updatedSession = dialogueSession
+                    updatedSession?.isCompleted = true
+                    updatedSession?.score = totalScore
+                    updatedSession?.feedback = feedback
+                    dialogueSession = updatedSession
+                    isEvaluatingDialogue = false
+                    
+                    let report = TrainingReport(
+                        id: UUID(),
+                        date: Date(),
+                        trainingType: .sceneDialogue,
+                        duration: duration,
+                        score: totalScore,
+                        feedback: feedback,
+                        improvements: [
+                            "注意在压力下保持逻辑连贯性",
+                            "准备更多事实和数据进行支撑",
+                            "练习主动引导对话方向",
+                            "控制语气，保持专业态度"
+                        ]
+                    )
+                    trainingReports.insert(report, at: 0)
+                    
+                    userProfile.completedSessions += 1
+                    userProfile.totalTrainingTime += duration
+                    let avgScore = trainingReports.reduce(0) { $0 + $1.score } / Double(trainingReports.count)
+                    userProfile.skillLevel = min(10, max(1, Int(avgScore / 10)))
+                }
+            }
+        }
     }
     
     func resetDialogue() {
         dialogueSession = nil
         isAIThinking = false
+        aiStreamingText = ""
+        isEvaluatingDialogue = false
+        errorMessage = nil
+        scenarioGenerateError = nil
     }
     
     // MARK: - 统计信息
@@ -439,16 +561,21 @@ class AppViewModel: ObservableObject {
     // MARK: - 提交评分
     func submitRetelling() {
         isEvaluating = true
+        streamingFeedback = ""
         
         Task {
             do {
-                let response = try await ApiService.shared.evaluateRetell(
+                let response = try await ApiService.shared.evaluateRetellStream(
                     contentId: todayContent.id,
                     originalTitle: todayContent.title,
                     originalContent: todayContent.content,
                     keyPoints: todayContent.keyPoints,
                     retellText: retellText
-                )
+                ) { token in
+                    Task { @MainActor in
+                        self.streamingFeedback += token
+                    }
+                }
                 
                 let scores = RetellScores(
                     fluency: response.fluency,
@@ -468,31 +595,74 @@ class AppViewModel: ObservableObject {
                         retellSuggestions: response.suggestions
                     )
                     lastPracticeResult = result
-                    currentStep = .opinion
                     transcribedText = ""
                     isEvaluating = false
+                    streamingFeedback = ""
                 }
             } catch {
+                // SSE 流失败时降级为非流式
                 await MainActor.run {
-                    // API失败时使用本地模拟评分作为降级
-                    let scores = generateRetellScores(text: retellText)
-                    let feedback = generateRetellFeedback(scores: scores)
-                    let result = DailyPracticeResult(
-                        contentId: todayContent.id,
-                        date: Date(),
-                        retellScores: scores,
-                        opinionScores: OpinionScores(depth: 0, expression: 0, criticalThinking: 0),
-                        retellFeedback: feedback,
-                        opinionFeedback: "",
-                        combinedFeedback: "",
-                        retellSuggestions: ["尝试在复述中加入更多原文的具体数据和细节", "注意文章的逻辑结构", "多用连接词使表达更加流畅自然"]
-                    )
-                    lastPracticeResult = result
-                    currentStep = .opinion
-                    transcribedText = ""
-                    isEvaluating = false
-                    errorMessage = "评测服务暂时不可用，已使用本地评分"
+                    self.streamingFeedback = ""
                 }
+                await fallbackRetelling()
+            }
+        }
+    }
+    
+    /// SSE 流失败时的降级方案
+    private func fallbackRetelling() async {
+        do {
+            let response = try await ApiService.shared.evaluateRetell(
+                contentId: todayContent.id,
+                originalTitle: todayContent.title,
+                originalContent: todayContent.content,
+                keyPoints: todayContent.keyPoints,
+                retellText: retellText
+            )
+            
+            let scores = RetellScores(
+                fluency: response.fluency,
+                accuracy: response.accuracy,
+                completeness: response.completeness
+            )
+            
+            await MainActor.run {
+                let result = DailyPracticeResult(
+                    contentId: todayContent.id,
+                    date: Date(),
+                    retellScores: scores,
+                    opinionScores: OpinionScores(depth: 0, expression: 0, criticalThinking: 0),
+                    retellFeedback: response.feedback,
+                    opinionFeedback: "",
+                    combinedFeedback: "",
+                    retellSuggestions: response.suggestions
+                )
+                lastPracticeResult = result
+                currentStep = .opinion
+                transcribedText = ""
+                isEvaluating = false
+            }
+        } catch {
+            await MainActor.run {
+                // API 完全失败时使用本地模拟评分
+                let scores = generateRetellScores(text: retellText)
+                let feedback = generateRetellFeedback(scores: scores)
+                let result = DailyPracticeResult(
+                    contentId: todayContent.id,
+                    date: Date(),
+                    retellScores: scores,
+                    opinionScores: OpinionScores(depth: 0, expression: 0, criticalThinking: 0),
+                    retellFeedback: feedback,
+                    opinionFeedback: "",
+                    combinedFeedback: "",
+                    retellSuggestions: ["尝试在复述中加入更多原文的具体数据和细节", "注意文章的逻辑结构", "多用连接词使表达更加流畅自然"]
+                )
+                lastPracticeResult = result
+                currentStep = .opinion
+                transcribedText = ""
+                isEvaluating = false
+                streamingFeedback = ""
+                errorMessage = "评测服务暂时不可用，已使用本地评分"
             }
         }
     }
