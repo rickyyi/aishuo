@@ -315,6 +315,16 @@ struct DailyPracticeResult: Identifiable {
     let retellFeedback: String
     let opinionFeedback: String
     let combinedFeedback: String
+    let retellSuggestions: [String]  // LLM返回的提升建议
+}
+
+// MARK: - LLM复述评测响应
+struct RetellEvaluationResponse: Codable {
+    let fluency: Double
+    let accuracy: Double
+    let completeness: Double
+    let feedback: String
+    let suggestions: [String]
 }
 
 // MARK: - 每日内容提供者

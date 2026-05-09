@@ -112,4 +112,47 @@ class ApiService {
             throw ApiError.decodingError(error)
         }
     }
+    
+    /// 提交复述文本给LLM评测
+    func evaluateRetell(contentId: String, originalTitle: String, originalContent: String,
+                        keyPoints: [String], retellText: String) async throws -> RetellEvaluationResponse {
+        guard let url = URL(string: "\(baseURL)/api/daily-content/evaluate-retell") else {
+            throw ApiError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30  // LLM可能较慢，给足时间
+        
+        let body: [String: Any] = [
+            "contentId": contentId,
+            "originalTitle": originalTitle,
+            "originalContent": originalContent,
+            "keyPoints": keyPoints,
+            "retellText": retellText
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw ApiError.networkError(error)
+        }
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ApiError.invalidResponse
+        }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw ApiError.serverError(statusCode: httpResponse.statusCode)
+        }
+        
+        do {
+            return try decoder.decode(RetellEvaluationResponse.self, from: data)
+        } catch {
+            throw ApiError.decodingError(error)
+        }
+    }
 }

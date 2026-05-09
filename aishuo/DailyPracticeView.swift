@@ -24,7 +24,6 @@ private let richShadow = Color(red: 0.24, green: 0.10, blue: 0.06).opacity(0.3)
 struct DailyPracticeView: View {
     @EnvironmentObject var viewModel: AppViewModel
     @Environment(\.dismiss) var dismiss
-    @State private var readingProgress: Double = 0
     @State private var showRetellResult = false
     @State private var showOpinionResult = false
     @State private var pulseAnimation = false
@@ -41,7 +40,7 @@ struct DailyPracticeView: View {
                     readingView
                 case .retelling:
                     if showRetellResult, let result = viewModel.lastPracticeResult {
-                        retellResultView(scores: result.retellScores, feedback: result.retellFeedback)
+                        retellResultView(scores: result.retellScores, feedback: result.retellFeedback, suggestions: result.retellSuggestions)
                     } else {
                         retellingInputView
                     }
@@ -159,7 +158,7 @@ struct DailyPracticeView: View {
                     .font(.body)
                     .foregroundColor(.white.opacity(0.9))
                     .lineSpacing(8)
-                    .opacity(readingProgress > 0 ? 1 : 0.8)
+                    .opacity(1)
                 
                 // 关键点
                 VStack(alignment: .leading, spacing: 8) {
@@ -225,8 +224,8 @@ struct DailyPracticeView: View {
                         .fill(Color(.systemBackground).opacity(0.85))
                         .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
                 )
-            } else if readingProgress > 0 {
-                // AI已朗读完成，准备复述
+            } else {
+                // 默认：开始复述 + AI朗读 + 换一个
                 VStack(spacing: 12) {
                     // 开始复述
                     Button(action: {
@@ -249,14 +248,14 @@ struct DailyPracticeView: View {
                     }
                     
                     HStack(spacing: 12) {
-                        // 重新朗读
+                        // AI朗读
                         Button(action: {
                             viewModel.startAISpeaking()
                         }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "play.circle.fill")
                                     .font(.subheadline)
-                                Text("重新朗读")
+                                Text("AI朗读")
                                     .font(.subheadline)
                             }
                             .foregroundColor(.white)
@@ -270,9 +269,6 @@ struct DailyPracticeView: View {
                         
                         // 换一个
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                readingProgress = 0
-                            }
                             viewModel.fetchNextContent()
                         }) {
                             HStack(spacing: 6) {
@@ -289,53 +285,6 @@ struct DailyPracticeView: View {
                                     .fill(Color.white.opacity(0.12))
                             )
                         }
-                    }
-                }
-            } else {
-                // 初始状态：朗读 + 换一个
-                VStack(spacing: 12) {
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.8)) {
-                            readingProgress = 1.0
-                        }
-                        viewModel.startAISpeaking()
-                    }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "play.circle.fill")
-                                .font(.title2)
-                            Text("AI朗读")
-                                .font(.headline)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            LinearGradient(colors: [deepIndigo, vibrantPurple], startPoint: .leading, endPoint: .trailing)
-                        )
-                        .cornerRadius(16)
-                        .shadow(color: vibrantPurple.opacity(0.3), radius: 8, x: 0, y: 4)
-                    }
-                    
-                    // 换一个按钮
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            readingProgress = 0
-                        }
-                        viewModel.fetchNextContent()
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.subheadline)
-                            Text("换一个")
-                                .font(.subheadline)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.white.opacity(0.12))
-                        )
                     }
                 }
             }
@@ -439,26 +388,42 @@ struct DailyPracticeView: View {
             Spacer()
             
             // 提交按钮
-            Button(action: {
-                withAnimation {
-                    viewModel.submitRetelling()
-                    showRetellResult = true
+            if viewModel.isEvaluating {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(vibrantPurple)
+                    Text("AI评测中...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-            }) {
-                Text("提交复述")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        viewModel.retellText.isEmpty ?
-                        LinearGradient(colors: [.gray.opacity(0.4), .gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing) :
-                        LinearGradient(colors: [deepIndigo, vibrantPurple], startPoint: .leading, endPoint: .trailing)
-                    )
-                    .cornerRadius(16)
-                    .shadow(color: viewModel.retellText.isEmpty ? .clear : vibrantPurple.opacity(0.3), radius: 8, x: 0, y: 4)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(.systemBackground).opacity(0.85))
+                )
+            } else {
+                Button(action: {
+                    withAnimation {
+                        viewModel.submitRetelling()
+                        showRetellResult = true
+                    }
+                }) {
+                    Text("提交复述")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            viewModel.retellText.isEmpty ?
+                            LinearGradient(colors: [.gray.opacity(0.4), .gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing) :
+                            LinearGradient(colors: [deepIndigo, vibrantPurple], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .cornerRadius(16)
+                        .shadow(color: viewModel.retellText.isEmpty ? .clear : vibrantPurple.opacity(0.3), radius: 8, x: 0, y: 4)
+                }
+                .disabled(viewModel.retellText.isEmpty)
             }
-            .disabled(viewModel.retellText.isEmpty)
             
             // 返回按钮
             Button(action: { goBackToStep(.reading) }) {
@@ -476,7 +441,7 @@ struct DailyPracticeView: View {
     }
     
     // MARK: - 复述结果
-    private func retellResultView(scores: RetellScores, feedback: String) -> some View {
+    private func retellResultView(scores: RetellScores, feedback: String, suggestions: [String]) -> some View {
         VStack(spacing: 20) {
             // 完成提示
             VStack(spacing: 12) {
@@ -515,6 +480,46 @@ struct DailyPracticeView: View {
             
             // 反馈
             feedbackCard(feedback: feedback, color: vibrantPurple)
+            
+            // AI提升建议
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.caption)
+                            .foregroundColor(accentGold)
+                        Text("AI提升建议")
+                            .font(.headline)
+                            .foregroundColor(deepIndigo)
+                    }
+                    
+                    ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(index + 1)")
+                                .font(.caption.bold())
+                                .foregroundColor(.white)
+                                .frame(width: 20, height: 20)
+                                .background(vibrantPurple)
+                                .cornerRadius(10)
+                            
+                            Text(suggestion)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                                .lineSpacing(4)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(accentGold.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(accentGold.opacity(0.15), lineWidth: 0.5)
+                )
+            }
             
             // 继续按钮
             Button(action: {
@@ -860,6 +865,46 @@ struct DailyPracticeView: View {
             )
             
             feedbackCard(feedback: result.retellFeedback, color: vibrantPurple)
+            
+            // AI提升建议
+            if !result.retellSuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.caption)
+                            .foregroundColor(accentGold)
+                        Text("AI提升建议")
+                            .font(.headline)
+                            .foregroundColor(deepIndigo)
+                    }
+                    
+                    ForEach(Array(result.retellSuggestions.enumerated()), id: \.offset) { index, suggestion in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(index + 1)")
+                                .font(.caption.bold())
+                                .foregroundColor(.white)
+                                .frame(width: 20, height: 20)
+                                .background(vibrantPurple)
+                                .cornerRadius(10)
+                            
+                            Text(suggestion)
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                                .lineSpacing(4)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(accentGold.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(accentGold.opacity(0.15), lineWidth: 0.5)
+                )
+            }
             
             // 观点评分
             scoreCard(

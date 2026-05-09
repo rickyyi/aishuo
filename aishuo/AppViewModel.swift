@@ -31,6 +31,7 @@ class AppViewModel: ObservableObject {
     @Published var lastPracticeResult: DailyPracticeResult?
     @Published var dailyPracticeDone: Bool = false
     @Published var transcribedText: String = ""
+    @Published var isEvaluating: Bool = false
     
     // MARK: - 场景对话状态
     @Published var dialogueSession: DialogueSession?
@@ -437,22 +438,63 @@ class AppViewModel: ObservableObject {
     
     // MARK: - 提交评分
     func submitRetelling() {
-        let scores = generateRetellScores(text: retellText)
-        let feedback = generateRetellFeedback(scores: scores)
+        isEvaluating = true
         
-        // 保存到临时结果
-        let result = DailyPracticeResult(
-            contentId: todayContent.id,
-            date: Date(),
-            retellScores: scores,
-            opinionScores: OpinionScores(depth: 0, expression: 0, criticalThinking: 0),
-            retellFeedback: feedback,
-            opinionFeedback: "",
-            combinedFeedback: ""
-        )
-        lastPracticeResult = result
-        currentStep = .opinion
-        transcribedText = ""
+        Task {
+            do {
+                let response = try await ApiService.shared.evaluateRetell(
+                    contentId: todayContent.id,
+                    originalTitle: todayContent.title,
+                    originalContent: todayContent.content,
+                    keyPoints: todayContent.keyPoints,
+                    retellText: retellText
+                )
+                
+                let scores = RetellScores(
+                    fluency: response.fluency,
+                    accuracy: response.accuracy,
+                    completeness: response.completeness
+                )
+                
+                await MainActor.run {
+                    let result = DailyPracticeResult(
+                        contentId: todayContent.id,
+                        date: Date(),
+                        retellScores: scores,
+                        opinionScores: OpinionScores(depth: 0, expression: 0, criticalThinking: 0),
+                        retellFeedback: response.feedback,
+                        opinionFeedback: "",
+                        combinedFeedback: "",
+                        retellSuggestions: response.suggestions
+                    )
+                    lastPracticeResult = result
+                    currentStep = .opinion
+                    transcribedText = ""
+                    isEvaluating = false
+                }
+            } catch {
+                await MainActor.run {
+                    // API失败时使用本地模拟评分作为降级
+                    let scores = generateRetellScores(text: retellText)
+                    let feedback = generateRetellFeedback(scores: scores)
+                    let result = DailyPracticeResult(
+                        contentId: todayContent.id,
+                        date: Date(),
+                        retellScores: scores,
+                        opinionScores: OpinionScores(depth: 0, expression: 0, criticalThinking: 0),
+                        retellFeedback: feedback,
+                        opinionFeedback: "",
+                        combinedFeedback: "",
+                        retellSuggestions: ["尝试在复述中加入更多原文的具体数据和细节", "注意文章的逻辑结构", "多用连接词使表达更加流畅自然"]
+                    )
+                    lastPracticeResult = result
+                    currentStep = .opinion
+                    transcribedText = ""
+                    isEvaluating = false
+                    errorMessage = "评测服务暂时不可用，已使用本地评分"
+                }
+            }
+        }
     }
     
     func submitOpinion() {
@@ -468,7 +510,8 @@ class AppViewModel: ObservableObject {
             opinionScores: scores,
             retellFeedback: result.retellFeedback,
             opinionFeedback: feedback,
-            combinedFeedback: combined
+            combinedFeedback: combined,
+            retellSuggestions: result.retellSuggestions
         )
         
         lastPracticeResult = result
