@@ -80,14 +80,14 @@ struct HomeView: View {
                     // 今日练习入口
                     dailyPracticeSection
                     
-                    // Agent系统入口
-                    agentsSection
-                    
                     // 快速训练入口
                     quickTrainingSection
                     
                     // 最近训练报告
                     recentReportsSection
+                    
+                    // 智能体宣传区
+                    agentsSection
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -106,7 +106,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("早安，\(viewModel.userProfile.name)")
+                    Text(timeBasedGreeting() + viewModel.userProfile.name)
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
@@ -180,6 +180,11 @@ struct HomeView: View {
                                 .font(.headline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
+                                                        
+                            // 今日练习状态指示器
+                            Circle()
+                                .fill(viewModel.dailyPracticeDone ? Color.green : Color.red)
+                                .frame(width: 8, height: 8)
                         }
                         
                         Text(viewModel.todayContent.title)
@@ -275,7 +280,7 @@ struct HomeView: View {
     
     private var agentsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("智能体系统")
+            sectionHeader("特色能力")
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 16) {
                 ForEach(AgentType.allCases) { agent in
@@ -320,6 +325,16 @@ struct HomeView: View {
                     ReportCard(report: report)
                 }
             }
+        }
+    }
+    
+    /// 根据时间段返回问候语
+    private func timeBasedGreeting() -> String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12:  return "早安，"
+        case 12..<18: return "下午好，"
+        default:      return "晚上好，"
         }
     }
 }
@@ -376,28 +391,31 @@ struct AgentCard: View {
     let agent: AgentType
     
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: agent.icon)
-                .font(.title)
-                .frame(width: 52, height: 52)
-                .background(agent.color)
-                .foregroundColor(.white)
-                .clipShape(Circle())
-                .shadow(color: deepIndigo.opacity(0.15), radius: 6, x: 0, y: 3)
-            
-            Text(agent.rawValue)
-                .font(.caption)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.center)
+        NavigationLink(destination: DailyPracticeView()) {
+            VStack(spacing: 10) {
+                Image(systemName: agent.icon)
+                    .font(.title)
+                    .frame(width: 52, height: 52)
+                    .background(agent.color)
+                    .foregroundColor(.white)
+                    .clipShape(Circle())
+                    .shadow(color: deepIndigo.opacity(0.15), radius: 6, x: 0, y: 3)
+                
+                Text(agent.rawValue)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color(.systemBackground).opacity(0.8))
+                    .shadow(color: Color.cardShadow, radius: 8, x: 0, y: 4)
+            )
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color(.systemBackground).opacity(0.8))
-                .shadow(color: Color.cardShadow, radius: 8, x: 0, y: 4)
-        )
+        .buttonStyle(.plain)
     }
 }
 

@@ -71,14 +71,21 @@ struct TrainingView: View {
                 }
                 .padding(.top, 8)
                 
-                // 场景卡片
-                ForEach(DialogueScene.presets) { scene in
-                    SceneCard(
-                        scene: scene,
-                        isSelected: selectedScene?.id == scene.id
-                    ) {
-                        withAnimation(.spring()) {
-                            selectedScene = scene
+                // 按难度分组的场景
+                ForEach(groupedScenes, id: \.0) { difficulty, scenes in
+                    VStack(alignment: .leading, spacing: 12) {
+                        // 难度标题
+                        difficultySectionHeader(difficulty, count: scenes.count)
+                        
+                        ForEach(scenes) { scene in
+                            SceneCard(
+                                scene: scene,
+                                isSelected: selectedScene?.id == scene.id
+                            ) {
+                                withAnimation(.spring()) {
+                                    selectedScene = scene
+                                }
+                            }
                         }
                     }
                 }
@@ -109,6 +116,44 @@ struct TrainingView: View {
             .padding(.top, 8)
         }
         .background(warmBg.ignoresSafeArea())
+    }
+    
+    /// 按难度分组
+    private var groupedScenes: [(String, [DialogueScene])] {
+        let groups = Dictionary(grouping: DialogueScene.presets) { $0.difficulty }
+        let order = ["简单", "中等", "困难"]
+        return order.compactMap { key in
+            guard let scenes = groups[key] else { return nil }
+            return (key, scenes)
+        }
+    }
+    
+    /// 难度分组标题
+    private func difficultySectionHeader(_ difficulty: String, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(difficultyColor(difficulty))
+                .frame(width: 8, height: 8)
+            Text(difficulty)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(difficultyColor(difficulty))
+            Text("\(count)个场景")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+    }
+    
+    private func difficultyColor(_ difficulty: String) -> Color {
+        switch difficulty {
+        case "简单": return Color.green
+        case "中等": return accentGold
+        case "困难": return vibrantPurple
+        default: return .secondary
+        }
     }
     
     // MARK: - 对话会话
@@ -164,6 +209,20 @@ struct TrainingView: View {
     // MARK: - 顶部栏
     private var topBar: some View {
         HStack(spacing: 12) {
+            // 返回按钮
+            Button(action: {
+                viewModel.resetDialogue()
+                stopTimer()
+                elapsedTime = 0
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.body)
+                    .foregroundColor(deepIndigo)
+                    .frame(width: 36, height: 36)
+                    .background(deepIndigo.opacity(0.06))
+                    .cornerRadius(10)
+            }
+            
             if let session = viewModel.dialogueSession {
                 // 场景信息
                 VStack(alignment: .leading, spacing: 2) {
