@@ -49,76 +49,81 @@ struct TrainingView: View {
     
     // MARK: - 场景选择
     private var sceneSelectionView: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // 标题
-                VStack(spacing: 8) {
-                    Image(systemName: "rectangle.and.text.magnifyingglass")
-                        .font(.system(size: 40))
-                        .foregroundColor(vibrantPurple)
-                        .frame(width: 70, height: 70)
-                        .background(vibrantPurple.opacity(0.1))
-                        .cornerRadius(20)
-                    
-                    Text("选择对话场景")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(deepIndigo)
-                    
-                    Text("模拟真实高压对话，AI会不断施压，锻炼你的临场反应")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                }
-                .padding(.top, 8)
-                
-                // 自定义场景（固定在顶部）
-                customSceneSection
-                
-                // 按难度分组的场景
-                ForEach(groupedScenes, id: \.0) { difficulty, scenes in
-                    VStack(alignment: .leading, spacing: 12) {
-                        // 难度标题
-                        difficultySectionHeader(difficulty, count: scenes.count)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // 标题
+                    VStack(spacing: 8) {
+                        Image(systemName: "rectangle.and.text.magnifyingglass")
+                            .font(.system(size: 40))
+                            .foregroundColor(vibrantPurple)
+                            .frame(width: 70, height: 70)
+                            .background(vibrantPurple.opacity(0.1))
+                            .cornerRadius(20)
                         
-                        ForEach(scenes) { scene in
-                            SceneCard(
-                                scene: scene,
-                                isSelected: selectedScene?.id == scene.id
-                            ) {
-                                withAnimation(.spring()) {
-                                    selectedScene = scene
+                        Text("选择对话场景")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(deepIndigo)
+                        
+                        Text("模拟真实高压对话，AI会不断施压，锻炼你的临场反应")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                    }
+                    .padding(.top, 8)
+                    
+                    // 自定义场景（固定在顶部）
+                    customSceneSection
+                    
+                    // 按难度分组的场景
+                    ForEach(groupedScenes, id: \.0) { difficulty, scenes in
+                        VStack(alignment: .leading, spacing: 12) {
+                            // 难度标题
+                            difficultySectionHeader(difficulty, count: scenes.count)
+                            
+                            ForEach(scenes) { scene in
+                                SceneCard(
+                                    scene: scene,
+                                    isSelected: selectedScene?.id == scene.id
+                                ) {
+                                    withAnimation(.spring()) {
+                                        selectedScene = scene
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                
-                // 开始按钮
-                Button(action: startDialogue) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "play.fill")
-                            .font(.subheadline)
-                        Text("开始对话")
-                            .font(.headline)
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        selectedScene != nil ?
-                        LinearGradient(colors: [deepIndigo, vibrantPurple], startPoint: .leading, endPoint: .trailing) :
-                        LinearGradient(colors: [.gray.opacity(0.4), .gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
-                    )
-                    .cornerRadius(16)
-                    .shadow(color: selectedScene != nil ? vibrantPurple.opacity(0.3) : .clear, radius: 8, x: 0, y: 4)
-                }
-                .disabled(selectedScene == nil)
+                .padding()
                 .padding(.top, 8)
+                .padding(.bottom, 8)
             }
-            .padding()
-            .padding(.top, 8)
+            
+            // 开始按钮 - 吸底固定
+            Button(action: startDialogue) {
+                HStack(spacing: 8) {
+                    Image(systemName: "play.fill")
+                        .font(.subheadline)
+                    Text("开始对话")
+                        .font(.headline)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    selectedScene != nil ?
+                    LinearGradient(colors: [accentGold, vibrantPurple], startPoint: .leading, endPoint: .trailing) :
+                    LinearGradient(colors: [.gray.opacity(0.4), .gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
+                )
+                .cornerRadius(16)
+                .shadow(color: selectedScene != nil ? accentGold.opacity(0.3) : .clear, radius: 8, x: 0, y: 4)
+            }
+            .disabled(selectedScene == nil)
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .background(Color(.systemBackground).opacity(0.95))
         }
         .background(warmBg.ignoresSafeArea())
     }

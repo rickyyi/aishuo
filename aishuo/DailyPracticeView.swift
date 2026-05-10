@@ -209,20 +209,40 @@ struct DailyPracticeView: View {
                     .padding()
             } else if viewModel.isAISpeaking {
                 // 朗读中
-                VStack(spacing: 12) {
+                HStack(spacing: 12) {
                     WaveformAnimation()
-                        .frame(height: 60)
+                        .frame(height: 16)
                     
                     Text("AI正在朗读...")
-                        .font(.headline)
+                        .font(.subheadline)
                         .foregroundColor(vibrantPurple)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        viewModel.stopAISpeaking()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.fill")
+                                .font(.caption)
+                            Text("停止")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(Color.red.opacity(0.8))
+                        )
+                    }
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
                 .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color(.systemBackground).opacity(0.85))
-                        .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(Color.white.opacity(0.12))
                 )
             } else {
                 // 默认：开始复述 + AI朗读 + 换一个

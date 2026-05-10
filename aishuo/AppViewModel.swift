@@ -11,11 +11,14 @@ import Combine
 import Speech
 import AVFoundation
 
-class AppViewModel: ObservableObject {
+class AppViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var userProfile: UserProfile
     @Published var trainingReports: [TrainingReport]
     @Published var currentSession: TrainingSession?
     @Published var selectedAgent: AgentType?
+    
+    // MARK: - TTS
+    private let speechSynthesizer = AVSpeechSynthesizer()
     
     // MARK: - 网络加载状态
     @Published var isLoading: Bool = false
@@ -56,13 +59,12 @@ class AppViewModel: ObservableObject {
     @Published var isDialogueRecording: Bool = false
     @Published var dialogueTranscribedText: String = ""
     
-    init() {
-        // 从UserDefaults加载数据或创建示例数据
+    override init() {
         self.userProfile = UserProfile.example
         self.trainingReports = [TrainingReport.example]
-        // 先用本地内容作为默认值
         self.todayContent = DailyContentProvider.contentForDate(Date())
-        // 异步从服务器加载每日内容
+        super.init()
+        speechSynthesizer.delegate = self
         loadTodayContentFromServer()
     }
     
@@ -442,14 +444,38 @@ class AppViewModel: ObservableObject {
     }
     
     func startAISpeaking() {
+        // 如果正在朗读则先停止
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: AVSpeechBoundary.immediate)
+        }
+        
         isAISpeaking = true
-        // 模拟AI朗读（1.5秒后完成，停留在阅读视图等待用户手动进入复述）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        let utterance = AVSpeechUtterance(string: todayContent.content)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        utterance.rate = 0.45
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        speechSynthesizer.speak(utterance)
+    }
+    
+    func stopAISpeaking() {
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: AVSpeechBoundary.immediate)
+        }
+        isAISpeaking = false
+    }
+    
+    // MARK: - AVSpeechSynthesizerDelegate
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async {
             self.isAISpeaking = false
         }
     }
     
     func proceedToRetelling() {
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: AVSpeechBoundary.immediate)
+        }
         currentStep = .retelling
     }
     

@@ -29,7 +29,7 @@ class ApiService {
     // 服务器地址，可根据实际部署修改
     // 模拟器访问本地服务使用 localhost
     // 真机测试需改为电脑局域网IP
-    private let baseURL = "http://127.0.0.1:8091"
+    private let baseURL = "http://192.168.31.121:8091"
 
     private let session: URLSession
     private let decoder: JSONDecoder
