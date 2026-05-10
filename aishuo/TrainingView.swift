@@ -26,6 +26,7 @@ struct TrainingView: View {
     @State private var elapsedTime: TimeInterval = 0
     @State private var timer: Timer?
     @State private var animateMic = false
+    @State private var showReferenceTip = true
     
     var body: some View {
         NavigationView {
@@ -315,6 +316,17 @@ struct TrainingView: View {
                             ))
                             .id("streaming")
                         }
+                        
+                        // 参考回复流式展示
+                        if !viewModel.referenceStreamingText.isEmpty {
+                            DialogueBubble(message: DialogueMessage(
+                                role: .reference,
+                                content: viewModel.referenceStreamingText,
+                                isPressure: false,
+                                timestamp: Date()
+                            ))
+                            .id("ref-streaming")
+                        }
                     }
                     .padding()
                 }
@@ -337,6 +349,37 @@ struct TrainingView: View {
                         scrollView.scrollTo("streaming", anchor: .bottom)
                     }
                 }
+                .onChange(of: viewModel.referenceStreamingText) { _ in
+                    withAnimation {
+                        scrollView.scrollTo("ref-streaming", anchor: .bottom)
+                    }
+                }
+            }
+            
+            // 参考回复提示
+            if showReferenceTip,
+               let session = viewModel.dialogueSession,
+               !session.messages.isEmpty,
+               !viewModel.isAIThinking,
+               viewModel.aiStreamingText.isEmpty,
+               !viewModel.isGeneratingReference {
+                Button(action: addReferenceReply) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.caption2)
+                        Text("看看AI怎么回复")
+                            .font(.caption)
+                    }
+                    .foregroundColor(vibrantPurple.opacity(0.7))
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .background(
+                        Capsule()
+                            .stroke(vibrantPurple.opacity(0.3), lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 4)
             }
             
             // 输入区域
@@ -823,6 +866,11 @@ struct TrainingView: View {
         }
     }
     
+    private func addReferenceReply() {
+        showReferenceTip = false
+        viewModel.generateReferenceReply()
+    }
+    
     private func endDialogue() {
         stopTimer()
         viewModel.endSceneDialogue()
@@ -920,6 +968,17 @@ struct DialogueBubble: View {
         HStack(alignment: .top, spacing: 10) {
             if message.role == .user {
                 Spacer(minLength: 60)
+            } else if message.role == .reference {
+                // 参考回复头像（轻量风格）
+                ZStack {
+                    Circle()
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(width: 28, height: 28)
+                    
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10))
+                        .foregroundColor(vibrantPurple.opacity(0.6))
+                }
             } else {
                 // AI头像
                 ZStack {
@@ -945,28 +1004,41 @@ struct DialogueBubble: View {
                     
                     Text(message.role.rawValue)
                         .font(.caption2)
-                        .foregroundColor(message.role == .ai ? vibrantPurple : .green)
+                        .foregroundColor(
+                            message.role == .ai ? vibrantPurple :
+                            message.role == .reference ? .gray.opacity(0.6) :
+                            .green
+                        )
                 }
                 
                 Text(message.content)
                     .font(.body)
-                    .foregroundColor(.white)
+                    .foregroundColor(message.role == .reference ? .primary.opacity(0.6) : .white)
                     .lineSpacing(6)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
                         message.role == .user ?
                         LinearGradient(colors: [deepIndigo, Color(red: 0.55, green: 0.25, blue: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                        message.role == .reference ?
+                        LinearGradient(colors: [Color.gray.opacity(0.08), Color.gray.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing) :
                         LinearGradient(colors: [vibrantPurple.opacity(0.85), Color(red: 0.85, green: 0.35, blue: 0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
                     .cornerRadius(16)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                        Group {
+                            if message.role == .reference {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(vibrantPurple.opacity(0.25), lineWidth: 1)
+                            } else {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                            }
+                        }
                     )
             }
             
-            if message.role == .ai {
+            if message.role == .ai || message.role == .reference {
                 Spacer(minLength: 60)
             } else {
                 // 用户头像

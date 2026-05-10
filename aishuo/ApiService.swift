@@ -345,6 +345,50 @@ class ApiService {
         }
     }
     
+    /// 获取参考回复（SSE 流式）
+    func fetchReferenceReplyStream(
+        sceneName: String,
+        sceneDescription: String,
+        difficulty: String,
+        messages: [(role: String, content: String)],
+        onToken: @escaping (String) -> Void
+    ) async throws -> String {
+        guard let url = URL(string: "\(baseURL)/api/scenario/reference-reply") else {
+            throw ApiError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 30
+        
+        let msgItems: [[String: String]] = messages.map { ["role": $0.role, "content": $0.content] }
+        let body: [String: Any] = [
+            "sceneName": sceneName,
+            "sceneDescription": sceneDescription,
+            "difficulty": difficulty,
+            "messages": msgItems
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let reader = SSEStreamReader(onToken: onToken)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            reader.onFinish = { accumulatedText in
+                continuation.resume(returning: accumulatedText)
+            }
+            reader.onError = { error in
+                continuation.resume(throwing: ApiError.networkError(error))
+            }
+            
+            let session = URLSession(configuration: .default, delegate: reader, delegateQueue: nil)
+            let task = session.dataTask(with: request)
+            task.resume()
+            _ = session
+        }
+    }
+    
     /// 评测完整对话会话
     func evaluateScenario(
         sceneName: String,

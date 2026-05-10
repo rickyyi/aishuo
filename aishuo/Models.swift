@@ -194,6 +194,7 @@ struct DialogueMessage: Identifiable {
     enum MessageRole: String {
         case ai = "AI"
         case user = "我"
+        case reference = "参考回复"
     }
 }
 

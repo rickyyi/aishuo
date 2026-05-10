@@ -48,6 +48,8 @@ class AppViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var isCustomScene: Bool = false
     @Published var isCustomScenarioReady: Bool = false
     @Published var customScenarioText: String = ""
+    @Published var isGeneratingReference: Bool = false
+    @Published var referenceStreamingText: String = ""
     
     // MARK: - 语音识别
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
@@ -152,6 +154,58 @@ class AppViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                     isGeneratingScenario = false
                     scenarioCaseText = ""
                     scenarioGenerateError = nil
+                }
+            }
+        }
+    }
+    
+    /// 生成参考回复（SSE 流式）
+    func generateReferenceReply() {
+        guard let session = dialogueSession else { return }
+        
+        isGeneratingReference = true
+        referenceStreamingText = ""
+        
+        // 排除参考回复消息，只传真实的对话历史
+        let allMessages: [(role: String, content: String)] = session.messages
+            .filter { $0.role != .reference }
+            .map { msg in
+                (role: msg.role == .ai ? "AI" : "user", content: msg.content)
+            }
+        
+        let scene = session.scene
+        let description = isCustomScene ? customScenarioText : scene.description
+        
+        Task {
+            do {
+                let reply = try await ApiService.shared.fetchReferenceReplyStream(
+                    sceneName: scene.name,
+                    sceneDescription: description,
+                    difficulty: scene.difficulty,
+                    messages: allMessages
+                ) { token in
+                    Task { @MainActor in
+                        self.referenceStreamingText += token
+                    }
+                }
+                
+                await MainActor.run {
+                    let refMessage = DialogueMessage(
+                        role: .reference,
+                        content: reply,
+                        isPressure: false,
+                        timestamp: Date()
+                    )
+                    var updated = session
+                    updated.messages.append(refMessage)
+                    self.dialogueSession = updated
+                    self.isGeneratingReference = false
+                    self.referenceStreamingText = ""
+                }
+            } catch {
+                await MainActor.run {
+                    self.isGeneratingReference = false
+                    self.referenceStreamingText = ""
                 }
             }
         }
@@ -375,6 +429,8 @@ class AppViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         isCustomScene = false
         isCustomScenarioReady = false
         customScenarioText = ""
+        isGeneratingReference = false
+        referenceStreamingText = ""
     }
     
     // MARK: - 统计信息
