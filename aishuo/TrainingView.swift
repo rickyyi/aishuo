@@ -45,6 +45,7 @@ struct TrainingView: View {
             }
             .navigationTitle("场景对话")
             .navigationBarTitleDisplayMode(viewModel.dialogueSession != nil ? .inline : .large)
+            .navigationBarHidden(viewModel.dialogueSession != nil)
         }
     }
     
@@ -334,6 +335,10 @@ struct TrainingView: View {
                     if let last = viewModel.dialogueSession?.messages.last {
                         withAnimation {
                             scrollView.scrollTo(last.id, anchor: .bottom)
+                        }
+                        // AI 回复完成后重新显示参考回复提示
+                        if !showReferenceTip && last.role == .ai && !viewModel.isAIThinking {
+                            showReferenceTip = true
                         }
                     }
                 }
