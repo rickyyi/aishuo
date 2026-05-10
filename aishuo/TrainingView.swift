@@ -375,12 +375,13 @@ struct TrainingView: View {
                         Text("看看AI怎么回复")
                             .font(.caption)
                     }
-                    .foregroundColor(vibrantPurple.opacity(0.7))
+                    .foregroundColor(vibrantPurple.opacity(0.6))
                     .padding(.vertical, 6)
                     .padding(.horizontal, 12)
                     .background(
                         Capsule()
-                            .stroke(vibrantPurple.opacity(0.3), lineWidth: 0.5)
+                            .fill(vibrantPurple.opacity(0.12))
+                            .stroke(vibrantPurple.opacity(0.25), lineWidth: 0.5)
                     )
                 }
                 .buttonStyle(.plain)
